@@ -10,6 +10,7 @@ editor: visual
 Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
 
 ## Changing views
+
 See Source / Visual buttons in RStudio to change modes
 
 ## Running Code
@@ -28,3 +29,131 @@ You can add options to executable code like this
 ```
 
 The `echo: false` option disables the printing of code (only output is displayed).
+
+## Making Functions
+
+```{r}
+testfun <- function (birthday, units){
+  difftime(Sys.time(), birthday, units = units)
+}
+
+testfun(units = "days", birthday = "1997-04-23")
+#same thing, if define same names as input
+testfun(birthday = "1997-04-23", units = "days")
+
+# predefine input variables
+my_age <- function(birthday, units = "days") {
+    difftime(Sys.time(), birthday, units = units)
+}
+
+# if not stated otherwise, our function uses the unit "days"
+my_age("1997-04-23")
+```
+
+
+# Task 1
+```{r}
+library(readr)
+library(dplyr)
+
+wildschwein <- read_csv("datasets/wildschwein_BE_2056.csv")
+
+#takes dataframe with E, N columns for coordinates and returns same dataframe with additional euc_dist column
+euc_dist <- function(data){
+  new <- data |> 
+    mutate(euc_dist = sqrt((E-lead(E,1))^2+(N-lead(N,1))^2))
+  
+  return(new)
+}
+
+#outputs a vector
+euc_dist2 <- function(data){
+  E <- data$E
+  N <- data$N
+  dist <- sqrt((E-lead(E,1))^2+(N-lead(N,1))^2)
+  return(dist)
+}
+
+# input only vector
+euc_dist_vec <- function(x, y, n = 1){
+  return(sqrt((x-lead(x, n))^2+(y-lead(y, n))^2))
+}
+
+print(euc_dist2(wildschwein))
+print(wildschwein$euc_dist <- euc_dist2(wildschwein))
+
+wildschwein |> 
+  mutate(euc_dist = euc_dist_vec(E, N))
+
+
+euclid <- function(x1, y1, x2, y2){
+  sqrt((x1-x2)^2 + (y1-y2)^2)
+}
+```
+
+# Task 2
+```{r}
+wildschwein_filtered <- wildschwein |> 
+  select(-TierID, -CollarID) |>  #don't need these columns
+  filter(TierName %in% c("Rosa", "Sabi")) |> 
+  filter(DatetimeUTC <= as.POSIXct("2015-04-15", tz = "UTC")  & DatetimeUTC >= as.POSIXct("2015-04-01", tz = "UTC"))
+
+# could also specify seconds, to make double sure
+```
+
+# Task 3
+```{r}
+library(lubridate)
+
+wildschwein_filtered <- wildschwein_filtered |> 
+  mutate(DatetimeRound = round_date(DatetimeUTC, unit="15 minutes"))
+
+# no linear interpolation (as mentioned in lecture). We cheat by smoothing the times
+# could interpolate with package zoo
+```
+
+# Task 4
+```{r}
+#1
+sabi <- wildschwein_filtered |> filter(TierName == "Sabi")
+rosa <- wildschwein_filtered |> filter(TierName == "Rosa")
+
+#2
+# joined <- dplyr::inner_join(sabi, rosa, "DatetimeRound")
+joined <- dplyr::inner_join(sabi, rosa, "DatetimeRound", suffix = c("_sabi", "_rosa")) # adds suffix to all data
+
+# to join sf data, we would drop geometry column (st_drop_geometry()) (because we would have two of them)
+# there are ways to keep them, but more complicated
+
+#3 
+joined <- joined |> 
+  mutate(euclid = euclid(E_sabi, N_sabi, E_rosa, N_rosa), 
+  meet = euclid < 100) |> #if they are closer than 100 meters, they meet
+  filter(meet)
+
+
+```
+
+# Task 5
+```{r}
+library(ggplot2)
+
+wildschwein_filtered |> 
+  ggplot((aes(E, N)))+
+    geom_point(aes(color = TierName), shape = 16, alpha = .2)+
+    geom_point(joined, mapping= aes(E_rosa, N_rosa, fill = TierName_rosa), shape = 21) +
+    geom_point(joined, mapping = aes(E_sabi, N_sabi, fill = TierName_sabi), shape = 21) +
+    labs(color = "Regular Location", fill="Meets") +
+    coord_equal()
+
+    
+# library(tidyr)
+# 
+# joined |> 
+#   select(-c(euclid, meet)) |> 
+#   pivot_longer(names_sep = "_", cols = everything())
+ 
+    
+    
+```
+
